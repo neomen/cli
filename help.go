@@ -43,7 +43,7 @@ func (c *Command) Help() {
 				fmt.Fprintf(w, "  %s:\n", group.Title)
 			}
 			for _, cmd := range group.Commands {
-				line := fmt.Sprintf("    %s\t%s", cmd.Name(), cmd.Short)
+				line := fmt.Sprintf("  %s\t\t%s", cmd.Name(), cmd.Short)
 				if cmd.Deprecated != "" {
 					line += " (deprecated)"
 				}
@@ -61,17 +61,63 @@ func (c *Command) usageLine() string {
 	return c.Use
 }
 
+// printFlags prints flags, merging long and short versions where defined.
 func (c *Command) printFlags(w io.Writer, fs *flag.FlagSet) {
+	// Track which flag names we've already printed as part of a combined pair
+	printed := make(map[string]bool)
+
+	// First, print combined flags
+	for _, meta := range c.flagMetaMap {
+		// We only want to print each meta once, but it's stored under two keys.
+		// Use a set of the meta pointers to avoid duplicates.
+		// For simplicity, we'll just check if we've printed the long name.
+		if printed[meta.longName] {
+			continue
+		}
+		printed[meta.longName] = true
+		printed[meta.shortName] = true
+
+		// check if empty
+		if meta.shortName == "" {
+			line := fmt.Sprintf("  --%s", meta.longName)
+			if meta.defValue != "" {
+				line += fmt.Sprintf("\t\t%s (Default: %s)", meta.usage, meta.defValue)
+			}
+			fmt.Fprintf(w, "%s\n", line)
+			continue
+		} else {
+			// check if long name is empty (should not happen in combined flags, but just in case)
+			if meta.longName == "" {
+				line := fmt.Sprintf("  -%s", meta.shortName)
+				if meta.defValue != "" {
+					line += fmt.Sprintf("\t\t%s (Default: %s)", meta.usage, meta.defValue)
+				}
+				fmt.Fprintf(w, "%s\n", line)
+				continue
+			}
+		}
+
+		// Build the flag line with both short and long names
+		line := fmt.Sprintf("  -%s, --%s", meta.shortName, meta.longName)
+		if meta.defValue != "" {
+			line += fmt.Sprintf("\t\t%s (Default: %s)", meta.usage, meta.defValue)
+		}
+		fmt.Fprintf(w, "%s\n", line)
+	}
+
+	// Then, print any remaining flags that are not part of a combined pair
 	fs.VisitAll(func(f *flag.Flag) {
-		// skip help flags to avoid duplication
 		if f.Name == "help" || f.Name == "h" {
 			return
 		}
-		fmt.Fprintf(w, "  -%s", f.Name)
-		if f.DefValue != "" {
-			fmt.Fprintf(w, "=%s", f.DefValue)
+		if printed[f.Name] {
+			return
 		}
-		fmt.Fprintf(w, "\n    \t%s\n", f.Usage)
+		line := fmt.Sprintf("  -%s", f.Name)
+		if f.DefValue != "" {
+			line += fmt.Sprintf("\t\t%s (Default: %s)", f.Usage, f.DefValue)
+		}
+		fmt.Fprintf(w, "%s\n    \t%s\n", line, f.Usage)
 	})
 }
 

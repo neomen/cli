@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -15,6 +16,15 @@ type PositionalArgs func(cmd *Command, args []string) error
 type Group struct {
 	ID    string
 	Title string
+}
+
+// flagMeta stores metadata about a flag that has both long and short forms.
+type flagMeta struct {
+	longName  string
+	shortName string
+	usage     string
+	value     flag.Value // the underlying flag.Value
+	defValue  string     // default value as string
 }
 
 // Command represents a CLI command with subcommands, flags, and an action.
@@ -102,6 +112,9 @@ type Command struct {
 	// NEW fields for flag parsing results
 	parsedFlags  *flag.FlagSet // combined set used for parsing
 	leftoverArgs []string      // arguments after flag parsing
+
+	// flagMetaMap maps each flag name (both long and short) to its metadata.
+	flagMetaMap map[string]*flagMeta
 }
 
 // NewCommand creates a new command with the given name and description.
@@ -114,6 +127,7 @@ func NewCommand(use, short, long string) *Command {
 		inReader:                   os.Stdin,
 		outWriter:                  os.Stdout,
 		errWriter:                  os.Stderr,
+		flagMetaMap:                make(map[string]*flagMeta),
 	}
 	cmd.localFlags = flag.NewFlagSet(use, flag.ContinueOnError)
 	cmd.persistentFlags = flag.NewFlagSet(use, flag.ContinueOnError)
@@ -231,4 +245,72 @@ func (c *Command) persistentFlagSets() []*flag.FlagSet {
 		sets = append([]*flag.FlagSet{cmd.persistentFlags}, sets...)
 	}
 	return sets
+}
+
+// ---------- Combined Flag Methods ----------
+
+// IntVarP defines an integer flag with both long and short names.
+// It sets the variable p to the value given on the command line.
+func (c *Command) IntVarP(p *int, long, short string, value int, usage string) {
+	// Register long flag (visible)
+	c.localFlags.IntVar(p, long, value, usage)
+	// Register short flag (hidden by skipping in help)
+	c.localFlags.IntVar(p, short, value, usage)
+	// Store metadata for help merging
+	meta := &flagMeta{
+		longName:  long,
+		shortName: short,
+		usage:     usage,
+		value:     c.localFlags.Lookup(long).Value,
+		defValue:  flagValueToString(value),
+	}
+	c.flagMetaMap[long] = meta
+	c.flagMetaMap[short] = meta
+}
+
+// StringVarP defines a string flag with both long and short names.
+func (c *Command) StringVarP(p *string, long, short string, value string, usage string) {
+	c.localFlags.StringVar(p, long, value, usage)
+	c.localFlags.StringVar(p, short, value, usage)
+	meta := &flagMeta{
+		longName:  long,
+		shortName: short,
+		usage:     usage,
+		value:     c.localFlags.Lookup(long).Value,
+		defValue:  value,
+	}
+	c.flagMetaMap[long] = meta
+	c.flagMetaMap[short] = meta
+}
+
+// BoolVarP defines a boolean flag with both long and short names.
+func (c *Command) BoolVarP(p *bool, long, short string, value bool, usage string) {
+	c.localFlags.BoolVar(p, long, value, usage)
+	c.localFlags.BoolVar(p, short, value, usage)
+	meta := &flagMeta{
+		longName:  long,
+		shortName: short,
+		usage:     usage,
+		value:     c.localFlags.Lookup(long).Value,
+		defValue:  flagValueToString(value),
+	}
+	c.flagMetaMap[long] = meta
+	c.flagMetaMap[short] = meta
+}
+
+// helper to convert a flag's default value to a string representation
+func flagValueToString(v interface{}) string {
+	switch val := v.(type) {
+	case int:
+		return strconv.Itoa(val)
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case string:
+		return val
+	default:
+		return ""
+	}
 }

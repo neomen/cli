@@ -31,14 +31,16 @@ func TestHelpOutput(t *testing.T) {
 		"Examples:\nexample text",
 		"Deprecated: use newcmd instead",
 		"Flags:",
-		"-flag1=default",
+		"-flag1",
+		"Default: default",
 		"flag1 usage",
 		"Persistent Flags:",
 		"-pflag",
 		"persistent flag",
 		"Available Commands:",
 		"Group One:",
-		"sub  sub short", // было "sub\tsub short"
+		"sub",
+		"sub short",
 	}
 	for _, check := range checks {
 		if !strings.Contains(out, check) {
